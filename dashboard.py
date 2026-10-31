@@ -2,6 +2,9 @@ import base64
 import csv
 import datetime
 import glob
+import json
+import random
+import time
 import io
 import os
 
@@ -54,10 +57,21 @@ st.markdown("""
 [data-testid="stFileUploaderDropzone"]{border:1px dashed #1de9c8;background:#0f1b2d}
 center,.footer-center{color:#8aa4b8;font-size:13px}
 @media(max-width:760px){.hero-row{grid-template-columns:1fr 1fr;height:420px}.hero-txt h1{font-size:26px}.collage{height:260px}}
+[data-testid="stSidebar"] div[role="radiogroup"]{gap:8px}
+[data-testid="stSidebar"] div[role="radiogroup"]>label{background:#0f1b2d;border:1px solid #1b3a4a;border-radius:10px;padding:10px 12px;width:100%;transition:all .2s}
+[data-testid="stSidebar"] div[role="radiogroup"]>label:hover{border-color:#1de9c8}
+[data-testid="stSidebar"] div[role="radiogroup"]>label:has(input:checked){border-color:#1de9c8;background:#12354a;box-shadow:0 0 10px #1de9c844}
+.footer{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:28px;padding:18px 10px 6px;border-top:1px solid #1b3a4a;color:#8aa4b8;font-size:13px;line-height:1.5}
+.footer img{height:58px;border-radius:10px;background:#fff;padding:4px}
 </style>
 """, unsafe_allow_html=True)
 
 MODEL_PATH = "model/best.pt"
+CONF_THR = 0.30  # ambang YOLO (dikunci)
+CNN_THR = 0.30   # ambang filter CNN (dikunci)
+CNN_PATH = "model/model_cnn.h5"
+CNN_LABELS = ["kerbau", "kuda", "nilgai", "sapi"]  # URUTAN HARUS SAMA DENGAN SAAT TRAINING CNN
+CNN_RESCALE = True  # True bila saat training gambar dibagi 255
 FONT = dict(color="#e6f1ff")
 COLORS = ["#4f63c8", "#22b8cf", "#2fb344", "#f5a623", "#a855f7", "#e5484d"]
 
@@ -82,6 +96,35 @@ try:
 except Exception as e:
     st.error(f"Gagal memuat model: {e}")
     yolo_model = None
+
+
+@st.cache_resource
+def load_cnn():
+    if not os.path.exists(CNN_PATH):
+        return None
+    from tensorflow.keras.models import load_model  # import malas: aplikasi tetap jalan tanpa TensorFlow
+    return load_model(CNN_PATH, compile=False)
+
+try:
+    cnn_model = load_cnn()
+except Exception as e:
+    cnn_model = None
+    st.sidebar.warning(f"Filter CNN tidak aktif: {e}")
+
+
+def cnn_check(img: Image.Image) -> tuple[str, float]:
+    """Tahap 1: klasifikasi CNN. Return (label teratas, probabilitas)."""
+    shp = cnn_model.input_shape
+    h, w, ch = (shp[1] or 224), (shp[2] or 224), (shp[3] if len(shp) > 3 else 3)
+    x = img.resize((w, h))
+    arr = np.asarray(x.convert("L") if ch == 1 else x, dtype=np.float32)
+    if ch == 1:
+        arr = arr[..., None]
+    if CNN_RESCALE:
+        arr = arr / 255.0
+    probs = np.asarray(cnn_model.predict(arr[None], verbose=0)[0], dtype=float).ravel()
+    i = int(np.argmax(probs))
+    return (CNN_LABELS[i] if len(probs) == len(CNN_LABELS) else f"Kelas {i}"), float(probs[i])
 
 # ==========================
 # FUNGSI ANALISIS
@@ -192,10 +235,24 @@ def halaman_registrasi():
                    '<p style="text-align:right;letter-spacing:.25em;color:#1de9c8;font-size:12px">DETECT / ANALYZE / PROTECT</p>', unsafe_allow_html=True)
 
 
-def tampil_deteksi(img: Image.Image, conf_thr: float, col1, col2):
+def tampil_deteksi(img: Image.Image, conf_thr: float, col1, col2, cnn_thr: float = CNN_THR):
     if yolo_model is None:
         st.error("Model YOLO belum tersedia. Pastikan file model/best.pt ada.")
         return
+    if cnn_model is not None:  # Tahap 1: CNN sebagai filter sebelum YOLOv8
+        with st.spinner("🔍 Tahap 1: validasi gambar dengan CNN..."):
+            label, c = cnn_check(img)
+        if c < cnn_thr:
+            kelas = ", ".join(str(n) for n in yolo_model.names.values())
+            with col2:
+                st.markdown(f'<div class="card" style="border-color:#ff6b57"><b style="color:#ff6b57;font-size:20px">IMAGE NOT RECOGNIZED</b><br>'
+                            f'Maaf, gambar yang Anda unggah tidak termasuk ke dalam kelas hewan yang didukung oleh VisionAI ({kelas}).<br>'
+                            f'Silakan unggah gambar hewan yang sesuai dengan kategori yang tersedia.<br><br>'
+                            f'Status: <b>Rejected</b> • Hasil klasifikasi: {label} • Confidence: {c*100:.1f}% (minimum {cnn_thr*100:.0f}%)<br>'
+                            f'Gambar tidak dapat diproses lebih lanjut.</div>', unsafe_allow_html=True)
+            st.session_state.update(last_mode="detection", used_feature=True, last_conf=c, last_pred="di luar kelas (ditolak CNN)")
+            return
+        st.caption(f"✅ Tahap 1 (CNN) lolos: {label} ({c*100:.1f}%) → lanjut ke YOLOv8")
     with st.spinner("🚀 AI sedang mendeteksi objek... harap tunggu sebentar!"):
         bgr = np.ascontiguousarray(np.asarray(img)[:, :, ::-1])  # ultralytics membaca array sebagai BGR
         res = yolo_model.predict(bgr, conf=conf_thr, verbose=False)[0]
@@ -275,13 +332,96 @@ def start() -> None:
     st.session_state["detect"] = True
 
 
+GAME_WIN_RATE = 0.3  # peluang 3 gambar cocok
+GAME_WIN_IMG, GAME_LOSE_IMG = "assets/naga_menang.png", "assets/hantu_kalah.jpg"
+HANTU_JS = r"""(function(){
+var d=document,old=d.getElementById('hantu-overlay');if(old){old.remove();}
+var ov=d.createElement('div');ov.id='hantu-overlay';
+ov.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2147483647;overflow:hidden;opacity:1;transition:opacity 1.2s ease-out';
+var im=d.createElement('img');im.src=__IMG__;
+im.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;transform:scale(0.05);transform-origin:50% 50%;transition:transform 0.7s cubic-bezier(.1,.9,.2,1)';
+im.style.objectFit=__FIT__;im.style.background=__BG__;ov.appendChild(im);d.body.appendChild(ov);
+requestAnimationFrame(function(){requestAnimationFrame(function(){im.style.transform='scale(1)';
+setTimeout(function(){im.style.transition='transform 20s linear';im.style.transform='scale(1.15)';},800);});});
+var done=false;function fade(){if(done){return;}done=true;ov.style.opacity='0';setTimeout(function(){ov.remove();},1300);}
+var a=new Audio(__SND__);a.onended=fade;a.onerror=function(){setTimeout(fade,4000);};
+var pr=a.play();if(pr&&pr.catch){pr.catch(function(){setTimeout(fade,4000);});}
+setTimeout(fade,20000);
+})();"""
+
+
+@st.cache_data
+def data_uri(path: str) -> str:
+    with open(path, "rb") as f:
+        return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()
+
+
+def hantu_fullscreen(img_path: str, snd: str, fit: str = "cover", bg: str = "transparent") -> None:
+    """Gambar zoom dari tengah hingga memenuhi layar, suara otomatis, fade-out saat suara selesai."""
+    import streamlit.components.v1 as components
+    js = HANTU_JS.replace("__IMG__", json.dumps(data_uri(img_path))).replace("__SND__", json.dumps(snd)).replace("__FIT__", json.dumps(fit)).replace("__BG__", json.dumps(bg))
+    loader = ("<script>var P=window.parent;var s=P.document.createElement('script');"
+              f"s.textContent={json.dumps(js)};P.document.head.appendChild(s);</script><!--{time.time()}-->")
+    components.html(loader, height=0)
+SND_WIN = "assets/mahjong.mp3" if os.path.exists("assets/mahjong.mp3") else "https://www.myinstants.com/media/sounds/mahjong_23mNzE1.mp3"
+SND_LOSE = "assets/horror_scream.mp3" if os.path.exists("assets/horror_scream.mp3") else "https://www.myinstants.com/media/sounds/horror-scream-high-quality.mp3"
+
+
+def tampil_game():
+    """Roulette 3 gambar dari data train. 3 sama = menang; 2x gagal berturut-turut = hantu kedua."""
+    pool = {d: sorted(glob.glob(f"game_images/{d}/*.jpg")) for d in sorted(os.listdir("game_images"))} if os.path.isdir("game_images") else {}
+    pool = {k: v for k, v in pool.items() if v}
+    st.markdown('<div class="section-title">🎰 MINIGAME ROULETTE</div>', unsafe_allow_html=True)
+    if not pool:
+        st.error("Folder game_images/ kosong atau tidak ditemukan.")
+        return
+    st.markdown('<div class="explain-box">Tekan <b>PUTAR</b>. Jika 3 gambar hewan cocok, kamu menang. Jika 2 kali percobaan berturut-turut gagal, '
+                'sesuatu akan muncul. ⚠️ <b>Peringatan:</b> ada gambar seram dan suara keras — kecilkan volume dulu.</div>', unsafe_allow_html=True)
+    st.session_state.setdefault("game_fail", 0)
+    st.caption(f"Gagal berturut-turut: {st.session_state['game_fail']} / 2")
+    ph = [c.empty() for c in st.columns(3)]
+    for x, k in zip(ph, list(pool)[:3]):
+        x.image(pool[k][0], caption="?", width="stretch")
+    if not st.button("🎰 PUTAR", key="spin", width="stretch"):
+        return
+    allimg = [f for v in pool.values() for f in v]
+    for _ in range(10):  # animasi putaran
+        for x in ph:
+            x.image(random.choice(allimg), width="stretch")
+        time.sleep(0.12)
+    names = list(pool)
+    if random.random() < GAME_WIN_RATE:  # sesuai GAME_WIN_RATE: 3 gambar sama
+        kinds = [random.choice(names)] * 3
+    else:
+        kinds = random.choices(names, k=3)
+        while len(set(kinds)) == 1:
+            kinds = random.choices(names, k=3)
+    for x, k in zip(ph, kinds):
+        x.image(random.choice(pool[k]), caption=k.upper(), width="stretch")
+    if len(set(kinds)) == 1:
+        st.session_state["game_fail"] = 0
+        st.success(f"🎉 3 gambar cocok: {kinds[0].upper()}!")
+        hantu_fullscreen(GAME_WIN_IMG, SND_WIN, "contain", "#ffffff")
+    else:
+        st.session_state["game_fail"] += 1
+        if st.session_state["game_fail"] >= 2:
+            st.session_state["game_fail"] = 0
+            st.error("💀 Dua kali gagal...")
+            hantu_fullscreen(GAME_LOSE_IMG, SND_LOSE)
+        else:
+            st.warning("Belum cocok. Coba sekali lagi...")
+
+
 def halaman_main():
-    st.sidebar.image("model/LOGO UUSK.jpg", width="stretch")
-    menu = st.sidebar.radio("🧭 Pilih Mode Analisis:", ["Deteksi Objek (YOLO)", "Analisis Warna Gambar"])
-    conf_thr = st.sidebar.slider("Confidence threshold (batas menolak gambar di luar kelas)", 0.05, 0.95, 0.50, 0.05)
+    menu = st.sidebar.radio("🧭 Pilih Mode Analisis:", ["Deteksi Objek (YOLO)", "Analisis Warna Gambar", "Minigame Roulette"])
+    conf_thr = CONF_THR
+    cnn_thr = CNN_THR
     navbar()
     st.markdown(f'<div class="explain-box">Halo <b>{st.session_state["user_name"]}</b> dari <b>{st.session_state["user_campus"]}</b> '
                 '— pilih sampel gambar atau unggah gambarmu, lalu tekan tombol mulai.</div>', unsafe_allow_html=True)
+    if menu.startswith("Minigame"):
+        tampil_game()
+        return
     left, right = st.columns([1, 3])
     with left:
         st.markdown('<div class="section-title">SAMPEL GAMBAR</div>', unsafe_allow_html=True)
@@ -312,7 +452,7 @@ def halaman_main():
             col1, col2 = st.columns(2)
             with col1:
                 st.image(img, caption="🖼️ Gambar Asli", width="stretch")
-            tampil_deteksi(img, conf_thr, col1, col2)
+            tampil_deteksi(img, conf_thr, col1, col2, cnn_thr)
         else:
             tampil_warna(img)
         if st.session_state["used_feature"]:
@@ -351,5 +491,4 @@ def halaman_feedback():
 {"home": halaman_awal, "register": halaman_registrasi, "main": halaman_main,
  "feedback": halaman_feedback}.get(st.session_state["page"], halaman_awal)()
 
-st.markdown("---")
-st.markdown("<center>created by <b>Siddiqia Almuntahza | 2308108010004</b><br>Proyek UAS Praktikum Pemrograman Big Data | Universitas Syiah Kuala</center>", unsafe_allow_html=True)
+st.markdown(f'<div class="footer"><img src="data:image/jpeg;base64,{b64("model/LOGO UUSK.jpg")}" alt="Logo USK"><div>created by <b style="color:#e6f1ff">Siddiqia Almuntahza | 2308108010004</b><br>Proyek UAS Praktikum Pemrograman Big Data<br>Universitas Syiah Kuala</div></div>', unsafe_allow_html=True)
