@@ -332,7 +332,7 @@ def start() -> None:
     st.session_state["detect"] = True
 
 
-GAME_WIN_RATE = 0.3  # peluang 3 gambar cocok
+GAME_WIN_RATE = 0.8  # peluang 3 gambar cocok
 GAME_WIN_IMG, GAME_LOSE_IMG = "assets/naga_menang.jpg", "assets/hantu_kalah.jpg"
 HANTU_JS = r"""(function(){
 var d=document,old=d.getElementById('hantu-overlay');if(old){old.remove();}
