@@ -195,22 +195,24 @@ def navbar():
     c[1].button("Beranda", key="nav_h", on_click=go_to, args=("home",), width="stretch")
     c[2].button("Deteksi", key="nav_d", on_click=go_to, args=("main" if logged else "register",), width="stretch")
     ok = yolo_model is not None
-    c[3].markdown(f'<div class="status">● MODEL YOLOv8 {"SIAP" if ok else "TIDAK TERSEDIA"}</div>', unsafe_allow_html=True)
+    cnn = "CNN + " if cnn_model is not None else ""
+    c[3].markdown(f'<div class="status">● MODEL {cnn}YOLOv8 {"SIAP" if ok else "TIDAK TERSEDIA"}</div>', unsafe_allow_html=True)
 
 
 def halaman_awal():
     navbar()
     st.markdown(f"""<div class="hero"><div class="hero-row">{cells(SAMPLES)}</div><div class="hero-txt">
 <h1>BUKAN SEKADAR GAMBAR,<br><span>INI ADALAH DATA</span></h1>
-<p>Deteksi otomatis hewan: kerbau, sapi, nilgai, dan kuda dengan teknologi deep learning (YOLOv8).</p></div></div>""", unsafe_allow_html=True)
+<p>Deteksi otomatis hewan: kerbau, sapi, nilgai, dan kuda dengan teknologi deep learning (CNN + YOLOv8).</p></div></div>""", unsafe_allow_html=True)
     st.write("")
     _, mid, _ = st.columns([1, 1, 1])
     mid.button("▶  PLAY — MULAI DETEKSI", key="play", width="stretch", on_click=go_to,
                args=("main" if st.session_state["user_name"] else "register",))
     st.markdown('<div class="section-title">TENTANG VISIONAI</div>', unsafe_allow_html=True)
-    for col, (t, d) in zip(st.columns(3), [("Deteksi YOLOv8", "Bounding box, nama kelas, dan confidence untuk setiap objek."),
+    for col, (t, d) in zip(st.columns(4), [("Validasi CNN (H5)", "Tahap 1: CNN memeriksa apakah gambar termasuk kelas hewan yang didukung."),
+                                           ("Deteksi YOLOv8", "Tahap 2: bounding box, nama kelas, dan confidence untuk setiap objek."),
                                            ("Analisis Warna", "Palet warna dominan, histogram RGB, dan distribusi kecerahan."),
-                                           ("Di Luar Kelas", "Gambar tanpa objek yang yakin ditolak dengan pesan khusus.")]):
+                                           ("Di Luar Kelas", "Gambar yang tidak dikenali ditolak dengan pesan khusus.")]):
         col.markdown(f'<div class="card"><b style="color:#1de9c8">{t}</b><br>{d}</div>', unsafe_allow_html=True)
 
 
@@ -332,8 +334,8 @@ def start() -> None:
     st.session_state["detect"] = True
 
 
-GAME_WIN_RATE = 0.4  # peluang 3 gambar cocok
-GAME_WIN_IMG, GAME_LOSE_IMG = "assets/naga_menang.jpg", "assets/hantu_kalah.jpg"
+GAME_WIN_RATE = 0.5  # peluang 3 gambar cocok
+GAME_WIN_IMG, GAME_LOSE_IMG = "naga_menang", "hantu_kalah"  # nama file di folder assets/ (ekstensi bebas)
 HANTU_JS = r"""(function(){
 var d=document,old=d.getElementById('hantu-overlay');if(old){old.remove();}
 var ov=d.createElement('div');ov.id='hantu-overlay';
@@ -352,13 +354,31 @@ setTimeout(fade,20000);
 
 @st.cache_data
 def data_uri(path: str) -> str:
+    mime = "image/png" if path.lower().endswith(".png") else "image/webp" if path.lower().endswith(".webp") else "image/jpeg"
     with open(path, "rb") as f:
-        return "data:image/jpeg;base64," + base64.b64encode(f.read()).decode()
+        return f"data:{mime};base64," + base64.b64encode(f.read()).decode()
 
 
-def hantu_fullscreen(img_path: str, snd: str, fit: str = "cover", bg: str = "transparent") -> None:
+def find_asset(stem: str):
+    """Cari assets/<stem>.(jpg|jpeg|png|webp) tanpa peduli huruf besar/kecil. None bila tidak ada."""
+    for d in ("assets", "."):
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                n, e = os.path.splitext(f)
+                if n.lower() == stem.lower() and e.lower() in (".jpg", ".jpeg", ".png", ".webp"):
+                    return os.path.join(d, f)
+    return None
+
+
+def hantu_fullscreen(img_stem: str, snd: str, fit: str = "cover", bg: str = "transparent") -> None:
     """Gambar zoom dari tengah hingga memenuhi layar, suara otomatis, fade-out saat suara selesai."""
     import streamlit.components.v1 as components
+    img_path = find_asset(img_stem)
+    if img_path is None:  # jangan crash: tampilkan petunjuk, suara tetap diputar
+        ada = sorted(os.listdir("assets")) if os.path.isdir("assets") else "(folder assets/ tidak ada di repo)"
+        st.error(f"Gambar '{img_stem}' tidak ditemukan. Unggah folder assets/ ke repo GitHub. Isi assets/ sekarang: {ada}")
+        st.audio(snd, autoplay=True)
+        return
     js = HANTU_JS.replace("__IMG__", json.dumps(data_uri(img_path))).replace("__SND__", json.dumps(snd)).replace("__FIT__", json.dumps(fit)).replace("__BG__", json.dumps(bg))
     loader = ("<script>var P=window.parent;var s=P.document.createElement('script');"
               f"s.textContent={json.dumps(js)};P.document.head.appendChild(s);</script><!--{time.time()}-->")
@@ -491,4 +511,4 @@ def halaman_feedback():
 {"home": halaman_awal, "register": halaman_registrasi, "main": halaman_main,
  "feedback": halaman_feedback}.get(st.session_state["page"], halaman_awal)()
 
-st.markdown(f'<div class="footer"><img src="data:image/jpeg;base64,{b64("model/LOGO UUSK.jpg")}" alt="Logo USK"><div>created by <b style="color:#e6f1ff">Siddiqia Almuntahza | 2308108010004</b><br>Proyek UAS Praktikum Pemrograman Big Data<br>Universitas Syiah Kuala</div></div>', unsafe_allow_html=True)
+st.markdown(f'<div class="footer"><img src="data:image/jpeg;base64,{b64("model/LOGO UUSK.jpg")}" alt="Logo USK"><div>created by <b style="color:#e6f1ff">Siddiqia Almuntahza | 2308108010004</b><br>Proyek UTS Praktikum Pemrograman Big Data<br>Universitas Syiah Kuala</div></div>', unsafe_allow_html=True)
