@@ -27,6 +27,11 @@ st.markdown("""
 <style>
 [data-testid="stAppViewContainer"]{background:radial-gradient(1200px 600px at 20% -10%,#0f2a3a 0%,#0a111e 55%);color:#e6f1ff}
 [data-testid="stHeader"],[data-testid="stToolbar"]{display:none}
+[data-testid="stAppViewContainer"],[data-testid="stApp"]{color-scheme:dark}
+[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] li{color:#e6f1ff}
+[data-testid="stWidgetLabel"] *,[data-testid="stRadio"] label *,[data-testid="stFileUploader"] label *{color:#e6f1ff !important}
+[data-testid="stCaptionContainer"] *,[data-testid="stFileUploaderDropzoneInstructions"] *{color:#9fb6c8 !important}
+[data-testid="stFileUploader"] button{background:#0f1b2d;border:1px solid #1de9c8;color:#e6f1ff}
 .block-container{max-width:1200px;padding:1rem 2rem !important}
 @keyframes scan{0%{top:0}100%{top:100%}}
 @keyframes fadeIn{0%{opacity:0;transform:translateY(14px)}100%{opacity:1;transform:none}}
@@ -57,10 +62,10 @@ st.markdown("""
 [data-testid="stFileUploaderDropzone"]{border:1px dashed #1de9c8;background:#0f1b2d}
 center,.footer-center{color:#8aa4b8;font-size:13px}
 @media(max-width:760px){.hero-row{grid-template-columns:1fr 1fr;height:420px}.hero-txt h1{font-size:26px}.collage{height:260px}}
-div[role="radiogroup"]{gap:10px;flex-wrap:wrap}
-div[role="radiogroup"]>label{background:#0f1b2d;border:1px solid #1b3a4a;border-radius:10px;padding:10px 12px;flex:1 1 200px;justify-content:center;transition:all .2s}
-div[role="radiogroup"]>label:hover{border-color:#1de9c8}
-div[role="radiogroup"]>label:has(input:checked){border-color:#1de9c8;background:#12354a;box-shadow:0 0 10px #1de9c844}
+[data-testid="stRadio"] [role="radiogroup"]{gap:10px;flex-wrap:wrap}
+[data-testid="stRadio"] [role="radiogroup"] label{background:#0f1b2d;border:1px solid #1b3a4a;border-radius:10px;padding:10px 14px;flex:1 1 200px;justify-content:center;transition:all .2s}
+[data-testid="stRadio"] [role="radiogroup"] label:hover{border-color:#1de9c8}
+[data-testid="stRadio"] [role="radiogroup"] label:has(input:checked){border-color:#1de9c8;background:#12354a;box-shadow:0 0 10px #1de9c844}
 .footer{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:28px;padding:18px 10px 6px;border-top:1px solid #1b3a4a;color:#8aa4b8;font-size:13px;line-height:1.5}
 .footer img{height:58px;border-radius:10px;background:#fff;padding:4px}
 </style>
@@ -343,6 +348,21 @@ ov.style.cssText='position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2
 var im=d.createElement('img');im.src=__IMG__;
 im.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;object-fit:cover;transform:scale(0.05);transform-origin:50% 50%;transition:transform 0.7s cubic-bezier(.1,.9,.2,1)';
 im.style.objectFit=__FIT__;im.style.background=__BG__;ov.appendChild(im);d.body.appendChild(ov);
+if(__FX__){
+var sy=d.createElement('style');sy.textContent='@keyframes bwp{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}';ov.appendChild(sy);
+var cv=d.createElement('canvas');cv.style.cssText='position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none';ov.appendChild(cv);
+var W=cv.width=window.innerWidth,H=cv.height=window.innerHeight,cx=cv.getContext&&cv.getContext('2d'),ps=[];
+function burst(x,y){var h=Math.random()*360;for(var i=0;i<80;i++){var an=Math.PI*2*i/80,v=2+Math.random()*6;ps.push({x:x,y:y,vx:Math.cos(an)*v,vy:Math.sin(an)*v,l:1,h:h+Math.random()*50});}}
+function tick(){if(!ov.isConnected){return;}if(cx){cx.globalCompositeOperation='destination-out';cx.fillStyle='rgba(0,0,0,0.2)';cx.fillRect(0,0,W,H);cx.globalCompositeOperation='lighter';
+for(var i=0;i<ps.length;i++){var q=ps[i];q.x+=q.vx;q.y+=q.vy;q.vy+=0.06;q.vx*=0.985;q.l-=0.011;cx.fillStyle='hsla('+q.h+',100%,60%,'+Math.max(q.l,0)+')';cx.beginPath();cx.arc(q.x,q.y,2.4,0,6.2832);cx.fill();}
+ps=ps.filter(function(q){return q.l>0;});}requestAnimationFrame(tick);}
+tick();
+function launch(){if(!ov.isConnected){return;}burst(W*(0.12+Math.random()*0.76),H*(0.12+Math.random()*0.5));setTimeout(launch,350+Math.random()*350);}
+setTimeout(launch,400);
+var big=d.createElement('div');big.textContent='BIG WIN';
+big.style.cssText='position:absolute;left:0;right:0;top:8%;text-align:center;font-family:Impact,"Arial Black",sans-serif;font-weight:900;font-size:min(18vw,190px);line-height:1;letter-spacing:.04em;color:#ffd54a;-webkit-text-stroke:3px #b34700;text-shadow:0 0 24px #ff9800,0 0 60px #ff5722,0 8px 0 #7a2e00;transform:scale(0);transition:transform .6s cubic-bezier(.2,1.6,.3,1)';
+ov.appendChild(big);setTimeout(function(){big.style.transform='scale(1)';},700);setTimeout(function(){big.style.animation='bwp 1s ease-in-out infinite';},1400);
+}
 requestAnimationFrame(function(){requestAnimationFrame(function(){im.style.transform='scale(1)';
 setTimeout(function(){im.style.transition='transform 20s linear';im.style.transform='scale(1.15)';},800);});});
 var done=false;function fade(){if(done){return;}done=true;ov.style.opacity='0';setTimeout(function(){ov.remove();},1300);}
@@ -370,7 +390,7 @@ def find_asset(stem: str):
     return None
 
 
-def hantu_fullscreen(img_stem: str, snd: str, fit: str = "cover", bg: str = "transparent") -> None:
+def hantu_fullscreen(img_stem: str, snd: str, fit: str = "cover", bg: str = "transparent", fx: bool = False) -> None:
     """Gambar zoom dari tengah hingga memenuhi layar, suara otomatis, fade-out saat suara selesai."""
     import streamlit.components.v1 as components
     img_path = find_asset(img_stem)
@@ -379,7 +399,7 @@ def hantu_fullscreen(img_stem: str, snd: str, fit: str = "cover", bg: str = "tra
         st.error(f"Gambar '{img_stem}' tidak ditemukan. Unggah folder assets/ ke repo GitHub. Isi assets/ sekarang: {ada}")
         st.audio(snd, autoplay=True)
         return
-    js = HANTU_JS.replace("__IMG__", json.dumps(data_uri(img_path))).replace("__SND__", json.dumps(snd)).replace("__FIT__", json.dumps(fit)).replace("__BG__", json.dumps(bg))
+    js = HANTU_JS.replace("__IMG__", json.dumps(data_uri(img_path))).replace("__SND__", json.dumps(snd)).replace("__FIT__", json.dumps(fit)).replace("__BG__", json.dumps(bg)).replace("__FX__", "true" if fx else "false")
     loader = ("<script>var P=window.parent;var s=P.document.createElement('script');"
               f"s.textContent={json.dumps(js)};P.document.head.appendChild(s);</script><!--{time.time()}-->")
     components.html(loader, height=0)
@@ -420,8 +440,8 @@ def tampil_game():
         x.image(random.choice(pool[k]), caption=k.upper(), width="stretch")
     if len(set(kinds)) == 1:
         st.session_state["game_fail"] = 0
-        st.success(f"🎉 3 gambar cocok: {kinds[0].upper()}!")
-        hantu_fullscreen(GAME_WIN_IMG, SND_WIN, "contain", "#ffffff")
+        st.success(f"🎉 BIG WIN! 3 gambar cocok: {kinds[0].upper()}!")
+        hantu_fullscreen(GAME_WIN_IMG, SND_WIN, "contain", "#ffffff", fx=True)
     else:
         st.session_state["game_fail"] += 1
         if st.session_state["game_fail"] >= 2:
